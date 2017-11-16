@@ -12,6 +12,7 @@ Versions Required for above project:
 * fortran 77
 
   ## Terminal Command
+  * The bash file (ikin_runme.sh) was created to make the executable file with the step by step display on terminal
 ```
 ./ikin_runme.sh
 ```
