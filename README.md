@@ -45,6 +45,6 @@ Paper reference is: <br />
 
 ### Output to the inverse kinematics
 * From General6R_ikin_AH
-![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/output.png)
+![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/output1.png)
 * From RoboAnalyzer
 ![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/image_RA_Ikin.JPG)
