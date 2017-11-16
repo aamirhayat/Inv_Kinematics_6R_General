@@ -60,7 +60,7 @@ cd /home/iit/6R_G/EISPACK && rm -r *.o ; cd -
 cd /home/iit/6R_G/IK_CODE  && rm -r *.o ; cd -
 # cd /home/iit/6R_G/IK_CODE
 # exec bash
-
+cp /home/iit/6R_G/IK_CODE/General6R_ikin_AH /home/iit/6R_G/Z_Exe_only
 
 
 
