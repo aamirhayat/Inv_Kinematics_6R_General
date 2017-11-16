@@ -42,3 +42,7 @@ Versions Required for above project:
 % Twist anlge  <br />
 The above DH parameters are taken from the RoboAnalyzer  and the visualization can be done there for the 8 IKin solutions
 Paper reference is: <br />
+
+### Output to the inverse kinematics
+
+![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/image_RA_Ikin.JPG)
