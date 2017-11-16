@@ -44,5 +44,7 @@ The above DH parameters are taken from the RoboAnalyzer  and the visualization c
 Paper reference is: <br />
 
 ### Output to the inverse kinematics
-
+* From General6R_ikin_AH
+![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/output.png)
+* From RoboAnalyzer
 ![Output Image](https://github.com/aamirhayat/Inv_Kinematics_6R_General/blob/master/image_RA_Ikin.JPG)
