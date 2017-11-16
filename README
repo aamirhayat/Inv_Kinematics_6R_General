@@ -1,0 +1,26 @@
+This file has been modified to make the executable
+
+The executable read the input in the format as:
+a1 a2 ... a6  % LINK LENGTH
+d1 d2 ... d6  % JOINT OFFSET
+alpha1 alpha2 ... alpha6   % TWIST ANGLE
+
+R11 R12 R13 % ROTATION MATRIX
+R21 R22 R23
+R31 R32 R33
+T1  T2  T3  %POSITION
+
+
+The directory IK_CODE contains the source code for inverse kinematics by Dr. Manocha.
+
+The directory EISPACK contains files from EISPACK package that are
+used in the IK_CODE. The files in this directory are not developed
+by us.
+
+# Modify the folder location accordingly in .sh 
+cd /home/iit/6R_G/EISPACK && rm -r *.o ; cd -
+cd /home/iit/6R_G/IK_CODE  && rm -r *.o ; cd -
+
+# To make the executable a bash file is written which requires gcc and f77 compilers
+
+

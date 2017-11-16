@@ -1,0 +1,43 @@
+DEFS = -DIK_OPT
+CC = cc
+CFLAGS = -O ${DEFS}
+FFLAGS = 
+LDFLAGS =  
+COMPILER = f77
+# this should be set to the corresponding directory
+EISPACK = /glycine/grip4/zhu/kinem/c/DISTRIBUTE/EISPACK
+IK_CODE = /glycine/grip4/zhu/kinem/c/DISTRIBUTE/IK_CODE
+CFILES = *.c
+
+IK_object = main.o matrix.o read.o read_ip.o eigen1.o improve.o reduce.o \
+	degen.o setup.o setup2.o check_degen.o gauss.o
+
+EISCODE = $(EISPACK)/dgeco.o $(EISPACK)/dgedi.o $(EISPACK)/rg.o $(EISPACK)/rgg.o $(EISPACK)/hybrj.o $(EISPACK)/dsvdc.o $(EISPACK)/dgesl.o
+
+#.f.o : ;cd $(EISPACK); $(COMPILER) -c $(FFLAGS) $<; cd $(IK_CODE)
+.f.o : ;$(COMPILER) -c $(FFLAGS) $<
+
+.c.o : ; $(CC) -c $(CFLAGS) $<
+
+LIB= eiscode
+OJBS =test
+
+scratch:
+	make eiscode
+	make test
+
+test : $(IK_object)
+	$(COMPILER) $(CFLAGS) -o test $(IK_object) $(EISCODE)
+
+eiscode: 
+	cd $(EISPACK); $(COMPILER) -c *; cd $(IK_CODE)
+
+
+clean: 
+	rm *.o
+
+
+depend :
+	makedepend -- $(CFLAGS) -- $(CFILES)
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.

@@ -1,0 +1,12 @@
+
+This is a distribution of source code and data for inverse kinematics.
+The inverse kinematics code is written by Yunshan Zhu, based on an 
+earlier implementation by Dr. Dinesh Manocha.
+The research is jointly conducted by Dr. Dinesh Manocha and Yunshan Zhu
+at UNC-Chapel Hill, partially funded by NIH grant 02710.
+
+For assistance or further information on the inverse kinematics and 
+molecular modeling research, please contact :
+
+Manocha, Zhu, Wright@cs.unc.edu
+

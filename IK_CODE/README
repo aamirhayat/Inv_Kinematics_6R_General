@@ -1,0 +1,34 @@
+/************************************************************************/
+/* This directory contains the code for inverse kinematics.		*/
+/* The code is written by Yunshan Zhu, based on an earlier implemenation*/
+/* by Dr. Dinesh Manocha						*/
+/************************************************************************/
+
+The executable read input from stdin.
+The input has the following format: (see files in ../DATA for examples)
+
+a1 a2 ... a6
+d1 d2 ... d6
+alpha1 alpha2 ... alpha6
+
+R11 R12 R13
+R21 R22 R23
+R31 R32 R33
+T1  T2  T3
+
+
+comments: R* is the rotation component of the end-effector, 
+	and T* is translation part.
+
+
+The output of The executable is the values of Theta1 ... Theta6.
+
+
+main.c 	The main program, initialize variables, and calls 
+	reduce.c (24*24)
+	setup.c  (?*?)   depends on the result from check_degen.c. 
+	setup2.c (32*32)
+
+degen.c is courterpart of reduce.c for the degenerated case, 
+	it is called by setup.c or setup2.c
+

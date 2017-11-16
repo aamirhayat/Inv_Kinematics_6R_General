@@ -1,0 +1,16 @@
+Make the 6R code 
+
+STEPS:
+1. remove the .obj file in the folder by rm *.ob
+
+# set "EISPACK= /home/iit/Documents/General6R/EISPACK"
+# gfortran -c *
+# cd IK_CODE
+# gfortran -c main.c matrix.c read.f read_ip.c eigen1.c improve.c reduce.c degen.c setup.c setup2.c check_degen.c gauss.c
+# gfortran -static -o General6R main.o matrix.o read.o read_ip.o eigen1.o improve.o reduce.o degen.o setup.o setup2.o check_degen.o gauss.o %EISPACK%/dgeco.o %EISPACK%/dgedi.o %EISPACK%/rg.o %EISPACK%/rgg.o %EISPACK%/hybrj.o %EISPACK%/dsvdc.o %EISPACK%/dgesl.o
+
+
+gfortran -static -o General6R main.o matrix.o read.o read_ip.o eigen1.o improve.o reduce.o degen.o setup.o setup2.o check_degen.o gauss.o /home/iit/Documents/General6R/EISPACK/dgeco.o /home/iit/Documents/General6R/EISPACK/dgedi.o /home/iit/Documents/General6R/EISPACK/rg.o /home/iit/Documents/General6R/EISPACK/rgg.o /home/iit/Documents/General6R/EISPACK/hybrj.o /home/iit/Documents/General6R/EISPACK/dsvdc.o /home/iit/Documents/General6R/EISPACK/dgesl.o
+
+
+

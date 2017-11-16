@@ -1,0 +1,726 @@
+/*
+   This is the main file for inverse kinematics computation.
+*/
+#include <stdio.h>
+#include "function.h"
+#include <math.h>
+#include <stdlib.h>
+
+/*
+    The global variables. Follow mostly to Raghavan/Roth paper.
+*/
+
+/*
+     The L's are the cosines and M's are the sines of the twist angles.
+*/
+    coordinate L1,L2,L3,L4,L5,L6;
+    coordinate M1,M2,M3,M4,M5,M6;
+    coordinate S1,S2,S3,S4,S5,S6;
+    coordinate C1,C2,C3,C4,C5,C6;
+
+/*
+      a_i is the length of link i.
+
+      d_i is the offset distance of joint i;
+*/
+    coordinate AA1,AA2,AA3,AA4,AA5,AA6;
+    coordinate D_d1,D_d2,D_d3,D_d4,D_d5,D_d6;
+
+/*
+    These are the entries of the RHS matrix.
+
+      [ lx  mx nx qx ]
+      [ ly  my ny qy ]
+      [ lz  mz nz qz ]
+      [ 0   0  0  1  ]
+
+*/
+    coordinate lx,ly,lz,mx,my,mz,nx,ny,nz,qx,qy,qz;
+
+/* 
+
+   The u,v,w,p,q,r  correspond to the expressions defined in Raghavan/Roth 
+   paper
+*/
+ 
+    coordinate u,v,w,p,q,r;
+    coordinate Pi = 3.141592653589793;
+    coordinate Rcond;
+
+/*
+ These matrices corespond to LHS and RHS matrices in Roth/Raghavan paper, page 319.
+
+  The Equations numbers in the comments are from the same paper.
+
+  The bottom 4 matrices are for the equations from  25 and 27 (the LHS and
+RHS matrices).
+*/
+
+    coordinate Rsim1[6][2];
+    coordinate Rsim2[8][6];
+    struct M_ENTRY Lsim1[6][9];
+    struct M_ENTRY Lsim2[8][9];
+
+    struct M_ENTRY IRL[2][9];
+    struct M_ENTRY IRRL[6][9]; /* A conversion matrix used in back substituting */
+    coordinate Convert[9][9]; /* Matrix used for Converting from s4,s5,c4,c5 to
+                                    x4 and x5. */
+
+    struct M_ENTRY LMAT[6][9];  /* Matrix on Equation 17 on page 317 */
+    struct M_ENTRY LMAT1[6][9]; /* Matrix on Equation 18 on page 317 */
+
+    struct M_ENTRY LHMAT[12][12]; /* Matrix obtained from the entries of LMAT1.
+                                     Like on Equation 21. But the entires are
+                                     functions of sin(X3) and cos(X3). */
+    struct X_ENTRY FMAT[12][12]; /* Reducing s3,c3 into x3. Correspond to Matrix
+                                    on equation 21 */
+
+/*
+    These matrices are generated from FMAT. In the process of reducing the 
+    problem to an Eigenvalue problem. 
+
+    EM2 : Coefficient of the quadratic term.
+    EM1 : Coefficient of the linear term.
+    EM0 : Coefficient of the constant terms.
+
+    IEM1 = EM2^-1 * EM1;
+    IEM0 = EM2^-1 * EM0;
+*/
+    coordinate EM2[12][12],EM21[12][12];
+    coordinate EM1[12][12], IEM1[12][12];
+    coordinate EM0[12][12], IEM0[12][12];
+    int  fGeneralized = 0;
+/*
+   fGeneralized is a flag, set to 1, if Generalized Eigenvalue problem is
+   used.
+*/
+  /* They contain the eigenvalues and   Eigenvectors. */
+
+
+    coordinate D_wr[24],D_wi[24],D_beta[24],D_zz[24][24];
+    coordinate Solution[6][16];
+    int num_sols;
+
+
+/*
+   Computes the entries of Convert matrix. A linear transformation.
+
+   This transformation is used to convert from S4,C4,S5,C5 to x4 and x5 by
+   putting x4 = tan t_4/2 and x5 = tan x_5/2.
+*/
+
+print_mat(mat1,row,col)
+coordinate mat1[6][2];
+int row,col;
+    {
+	 int i,j;
+	 int k;
+	 
+	 for (i=0;i< row;i++)
+	   {
+		printf("    <");
+       	   for (j=0;j< col; j++)
+	       printf("%f  ",mat1[i][j]);
+       	 printf("> \n");
+	   }
+    }
+    
+      
+Initialize_Convert()
+{
+
+    int i,j;
+
+    for (i = 0; i < 9; i++)
+    for (j = 0; j < 9; j++)
+       Convert[i][j] = 0.0;
+
+    Convert[0][4] = 4.0;
+    Convert[1][3] = -2.0;
+    Convert[1][5] = 2.0;
+    Convert[2][1] = -2.0;
+    Convert[2][7] = 2.0;
+    Convert[3][0] = 1.0;
+    Convert[3][2] = -1.0;
+    Convert[3][6] = -1.0;
+    Convert[3][8] = 1.0;
+    Convert[4][3] = 2.0;
+    Convert[4][5] = 2.0;
+    Convert[5][0] = -1.0;
+    Convert[5][2] = -1.0;
+    Convert[5][6] = 1.0;
+    Convert[5][8] = 1.0;
+    Convert[6][1] = 2.0;
+    Convert[6][7] = 2.0;
+    Convert[7][0] = -1.0;
+    Convert[7][2] = 1.0;
+    Convert[7][6] = -1.0;
+    Convert[7][8] = 1.0;
+    Convert[8][0] = 1.0;
+    Convert[8][2] = 1.0;
+    Convert[8][6] = 1.0;
+    Convert[8][8] = 1.0;
+}
+
+/* 
+ Computes the entries of the LHMAT matrix.
+*/
+
+
+compute_LHMAT()
+
+{
+    int i,j,k;
+    struct M_ENTRY m_entry1,m_entry2;
+    coordinate det,temp1,temp2,temp3;
+
+    coordinate RR1[2][2];
+    coordinate IRR1[2][2];
+    struct M_ENTRY RRL[4][9];
+
+    coordinate RRR1[6][6];
+    struct M_ENTRY RRRL[2][9];
+
+    int ipvt[6],job;
+    coordinate z[6],rcond,work[6],det1[2];
+    int dim = 6;
+ 
+
+/*
+          Need to Interchange Correspoding Rows of Rsim1 and Lsim1, such
+     that their corresponding minors are not singular. */
+/*
+    for (i=0;i<6;i++)
+      printf(" Rsim1[i][0] %f  , Rsim[i][1] %f\n",Rsim1[i][0], Rsim1[i][1]);
+*/
+    temp1 = Rsim1[0][0];
+    Rsim1[0][0] = Rsim1[4][0];
+    Rsim1[4][0] = temp1;
+
+    temp1 = Rsim1[0][1];
+    Rsim1[0][1] = Rsim1[4][1];
+    Rsim1[4][1] = temp1;
+
+/*    temp1 = Rsim1[1][0];
+    Rsim1[1][0] = Rsim1[5][0];
+    Rsim1[5][0] = temp1;
+
+    temp1 = Rsim1[1][1];
+    Rsim1[1][1] = Rsim1[5][1];
+    Rsim1[5][1] = temp1;
+
+*/
+    for (i = 0; i < 9; i++)
+    {
+        m_entry1 = Lsim1[0][i];
+        Lsim1[0][i] = Lsim1[4][i];
+        Lsim1[4][i] = m_entry1;
+    }
+/*
+    for (i = 0; i < 9; i++)
+    {
+        m_entry1 = Lsim1[1][i];
+        Lsim1[1][i] = Lsim1[5][i];
+        Lsim1[5][i] = m_entry1;
+    }
+*/
+
+/*
+    printf(" Rsim1[0][0] %f  , Rsim[0][1] %f\n",Rsim1[0][0], Rsim1[0][1]);
+    printf(" Rsim1[1][0] %f  , Rsim[1][1] %f\n",Rsim1[1][0], Rsim1[1][1]);
+*/
+    det = Rsim1[1][1] * Rsim1[0][0] - Rsim1[1][0] * Rsim1[0][1];
+
+    if (det == 0.0)
+    {
+        printf("The RHIS Matrix I is Singular \n");
+        exit(1);
+    }
+
+
+    RR1[0][0] =  Rsim1[1][1]/det;
+    RR1[0][1] = -Rsim1[0][1]/det;
+    RR1[1][0] = -Rsim1[1][0]/det;
+    RR1[1][1] =  Rsim1[0][0]/det;
+
+    for (i = 0; i < 2; i++)
+    for (j = 0; j < 9; j++)
+    {
+        
+        m_entry1.Cos = RR1[i][0] * Lsim1[0][j].Cos + RR1[i][1] * Lsim1[1][j].Cos; 
+        m_entry1.Sin = RR1[i][0] * Lsim1[0][j].Sin + RR1[i][1] * Lsim1[1][j].Sin; 
+        m_entry1.Const = RR1[i][0] * Lsim1[0][j].Const + RR1[i][1] * Lsim1[1][j].Const; 
+        IRL[i][j] = m_entry1;
+     }
+
+    for (i = 2; i < 6; i++)
+    for (j = 0; j < 9; j++)
+    {
+
+        m_entry1.Cos = Rsim1[i][0] * IRL[0][j].Cos + Rsim1[i][1] * IRL[1][j].Cos;
+        m_entry1.Sin = Rsim1[i][0] * IRL[0][j].Sin + Rsim1[i][1] * IRL[1][j].Sin;
+        m_entry1.Const = Rsim1[i][0] * IRL[0][j].Const + Rsim1[i][1] * IRL[1][j].Const;
+        
+        RRL[i-2][j] = m_entry1;
+     }
+
+     for (i = 0; i < 4; i++)
+     for (j = 0; j < 9; j++)
+     {
+         LMAT[i][j].Cos = Lsim1[i+2][j].Cos - RRL[i][j].Cos;
+         LMAT[i][j].Sin = Lsim1[i+2][j].Sin - RRL[i][j].Sin;
+         LMAT[i][j].Const = Lsim1[i+2][j].Const - RRL[i][j].Const;
+     }
+
+     
+    for (i = 0; i < 6; i++)
+    for (j = 0; j < 6; j++)
+        RRR1[i][j] = Rsim2[i][j];
+
+     
+
+     for (i = 0; i < 6; i++)
+        ipvt[i] = 0;
+
+    dim = 6;
+    dgeco_(RRR1,&dim,&dim,ipvt,&Rcond,z);
+
+    printf("RRRcond for inversion = %15.10f \n",Rcond);
+    job = 01;
+    dgedi_(RRR1,&dim,&dim,ipvt,det1,work,&job);
+
+/* 
+ 
+   So RRR1 contains the inverse.
+
+    
+    for (i = 0; i < 6; i++)
+    for (j = 0; j < 6; j++)
+        printf("RRR[%d][%d] = %15.10f \n",i,j,RRR1[i][j]);
+*/
+
+    for (i = 0; i < 6; i++)
+    for (j = 0; j < 9; j++)
+    {
+    
+        temp1 = 0.0;
+        temp2 = 0.0;
+        temp3 = 0.0;
+        for (k = 0; k < 6; k++)
+        {
+            temp1 = temp1 + RRR1[i][k] * Lsim2[k][j].Cos; 
+            temp2 = temp2 + RRR1[i][k] * Lsim2[k][j].Sin; 
+            temp3 = temp3 + RRR1[i][k] * Lsim2[k][j].Const; 
+        }
+        IRRL[i][j].Cos = temp1;
+        IRRL[i][j].Sin = temp2;
+        IRRL[i][j].Const = temp3;
+    }
+        
+
+    for (i = 0; i < 2; i++)
+    for (j = 0; j < 9; j++)
+    {
+        temp1 = 0.0;
+        temp2 = 0.0;
+        temp3 = 0.0;
+        for (k = 0; k < 6; k++)
+        {
+
+            temp1 += Rsim2[6+i][k] * IRRL[k][j].Cos;
+            temp2 += Rsim2[6+i][k] * IRRL[k][j].Sin;
+            temp3 += Rsim2[6+i][k] * IRRL[k][j].Const;
+        }
+        RRRL[i][j].Cos = temp1;
+        RRRL[i][j].Sin = temp2;
+        RRRL[i][j].Const = temp3;
+     }
+
+
+     for (i = 0; i < 2; i++)
+     for (j = 0; j < 9; j++)
+     {
+         LMAT[4+i][j].Cos = Lsim2[6+i][j].Cos - RRRL[i][j].Cos;
+         LMAT[4+i][j].Sin = Lsim2[6+i][j].Sin - RRRL[i][j].Sin;
+         LMAT[4+i][j].Const = Lsim2[6+i][j].Const - RRRL[i][j].Const;
+     }
+/*
+   Multiply LMAT with Convert.
+*/
+
+     for (i = 0; i < 6; i++)
+     for (j = 0; j < 9; j++)
+     {
+        temp1 = 0.0;
+        temp2 = 0.0;
+        temp3 = 0.0;
+        for (k = 0; k < 9; k++)
+        {
+
+            temp1 += LMAT[i][k].Cos * Convert[k][j];
+            temp2 += LMAT[i][k].Sin * Convert[k][j];
+            temp3 += LMAT[i][k].Const * Convert[k][j];
+        }
+        LMAT1[i][j].Cos = temp1;
+        LMAT1[i][j].Sin = temp2;
+        LMAT1[i][j].Const = temp3;
+    }
+
+     for ( i = 0; i < 6; i++)
+     for ( j = 0; j < 9; j++)
+         LHMAT[i][j] = LMAT1[i][j];
+
+
+     for ( i = 0; i < 6; i++)
+     for ( j = 9; j < 12; j++)
+     {
+         LHMAT[i][j].Cos  = 0.0;
+         LHMAT[i][j].Sin  = 0.0;
+         LHMAT[i][j].Const  = 0.0;
+     }
+
+     for ( i = 6; i < 12; i++)
+     for ( j = 0; j < 3; j++)
+     {
+         LHMAT[i][j].Cos  = 0.0;
+         LHMAT[i][j].Sin  = 0.0;
+         LHMAT[i][j].Const  = 0.0;
+     }
+
+     for ( i = 6; i < 12; i++)
+     for ( j = 3; j < 12; j++)
+         LHMAT[i][j] = LMAT1[i-6][j-3];
+
+/*
+   LHMAT correspond to LHS matrix of equation 31 in Raghavan paper.
+   Of course its entries are functions of sin(X3) and cos(X3).
+*/
+}
+
+compute_FMAT()
+
+{
+    int i,j,k;
+    coordinate alpha,beta,gamma;
+
+    for (i = 0; i < 6; i++)
+    for (j = 0; j < 9; j++)
+    {
+        alpha = LHMAT[i][j].Sin;
+        beta = LHMAT[i][j].Cos;
+        gamma = LHMAT[i][j].Const;
+        
+        EM21[i][j] = EM2[i][j] = FMAT[i][j].Quadratic = gamma - beta;
+        EM1[i][j] = FMAT[i][j].Linear =  2 * alpha;
+        EM0[i][j] = FMAT[i][j].Const = gamma + beta;
+    }
+
+    for (i = 6; i < 12; i++)
+    for (j = 3; j < 12; j++)
+    {
+        alpha = LHMAT[i][j].Sin;
+        beta = LHMAT[i][j].Cos;
+        gamma = LHMAT[i][j].Const;
+        
+        EM21[i][j] = EM2[i][j] = FMAT[i][j].Quadratic = gamma - beta;
+        EM1[i][j] = FMAT[i][j].Linear =  2 * alpha;
+        EM0[i][j] = FMAT[i][j].Const = gamma + beta;
+    }
+
+    for (i = 0; i < 6; i++)
+    for (j = 9; j < 12; j++)
+    {
+        EM21[i][j] = EM2[i][j] = FMAT[i][j].Quadratic = 0.0;
+        EM1[i][j] = FMAT[i][j].Linear =  0.0;
+        EM0[i][j] = FMAT[i][j].Const = 0.0;
+    }
+
+    for (i = 6; i < 12; i++)
+    for (j = 0; j < 3; j++)
+    {
+        EM21[i][j] = EM2[i][j] = FMAT[i][j].Quadratic = 0.0;
+        EM1[i][j] = FMAT[i][j].Linear =  0.0;
+        EM0[i][j] = FMAT[i][j].Const = 0.0;
+    }
+}
+
+
+Verify_Results()
+
+{
+
+    coordinate A1[4][4], A2[4][4], A3[4][4], A4[4][4], A5[4][4], A6[4][4];
+    int i,j,k,l;
+    coordinate sum, LHS[4][4], temp[4][4], temp1[4][4];
+    coordinate n1,n2,n3,h1,h2,h3,m1,m2,m3,g1,g2,g3,r1,r2,r3,f1,f2,f3;
+
+        n1 = C1 * u + S1 * v;
+        n2 = -L1 * (S1 * u - C1 * v) + M1 * w;
+        n3 = M1 * (S1 * u - C1 * v) + L1 * w;
+
+        h1 = C1 * p + S1 * q - AA1;
+        h2 = - L1 * (S1 * p - C1 * q) + M1 * (r - D_d1);
+        h3 = M1 * (S1 * p - C1 * q) + L1 * (r - D_d1);
+
+        m1 = S5 * M5;
+        m2 = C5 * L4 * M5 + M4 * L5;
+        m3 = -C5 * M4 * M5 + L4 * L5;
+
+        g1 = C5 * AA5 + AA4;
+        g2 = -S5 * L4 * AA5 + M4 * D_d5;
+        g3 = S5 * M4 * AA5 + L4 * D_d5 + D_d4;
+
+        r1 = C4 * m1 + S4 * m2;
+        r2 = -L3 * (S4 * m1 - C4 * m2) + M3 * m3;
+        r3 = M3 * (S4 * m1 - C4 * m2) + L3 * m3;
+        
+        f1 = C4 * g1 + S4 * g2 + AA3;
+        f2 = - L3 * (S4 * g1 - C4 * g2) + M3 * g3;
+        f3 = M3 * (S4 * g1 - C4 * g2) + L3 * g3 + D_d3;
+
+#ifndef IK_OPT
+/*
+        printf(" \n VERIFY RESULTS \n");
+        printf(" %15.10f, %15.10f, %15.10f,\n %15.10f, %15.10f, %15.10f \n", C3 * f1 + S3 * f2 - C2 * h1 - S2 * h2 + AA2, S3 * f1 - C3 * f2 + L2 * (S2 * h1 - C2 * h2) - M2 * (h3 - D_d2), f3 - M2 * (S2 * h1 - C2 * h2) - L2 * (h3 - D_d2), C3 * r1 + S3 * r2 - C2 * n1 - S2 * n2, S3 * r1 - C3 * r2 + L2 * (S2 * n1 - C2 * n2) - M2 * n3, r3 - M2 * (S2 * n1 - C2 * n2) - L2 * n3);
+*/
+#endif
+
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            A1[i][j] = 0.0;
+            A2[i][j] = 0.0;
+            A3[i][j] = 0.0;
+            A4[i][j] = 0.0;
+            A5[i][j] = 0.0;
+            A6[i][j] = 0.0;
+        }
+    
+        A1[0][0] = C1;
+        A1[0][1] = -S1 * L1;
+        A1[0][2] = S1 * M1;
+        A1[0][3] = AA1 * C1;
+        A1[1][0] = S1;
+        A1[1][1] = C1 * L1;
+        A1[1][2] = - C1 * M1;
+        A1[1][3] = AA1 * S1;
+        A1[2][1] = M1;
+        A1[2][2] = L1;
+        A1[2][3] = D_d1;
+        A1[3][3] = 1.0;
+    
+        A2[0][0] = C2;
+        A2[0][1] = -S2 * L2;
+        A2[0][2] = S2 * M2;
+        A2[0][3] = AA2 * C2;
+        A2[1][0] = S2;
+        A2[1][1] = C2 * L2;
+        A2[1][2] = - C2 * M2;
+        A2[1][3] = AA2 * S2;
+        A2[2][1] = M2;
+        A2[2][2] = L2;
+        A2[2][3] = D_d2;
+        A2[3][3] = 1.0;
+    
+        
+        A3[0][0] = C3;
+        A3[0][1] = -S3 * L3;
+        A3[0][2] = S3 * M3;
+        A3[0][3] = AA3 * C3;
+        A3[1][0] = S3;
+        A3[1][1] = C3 * L3;
+        A3[1][2] = - C3 * M3;
+        A3[1][3] = AA3 * S3;
+        A3[2][1] = M3;
+        A3[2][2] = L3;
+        A3[2][3] = D_d3;
+        A3[3][3] = 1.0;
+    
+        A4[0][0] = C4;
+        A4[0][1] = -S4 * L4;
+        A4[0][2] = S4 * M4;
+        A4[0][3] = AA4 * C4;
+        A4[1][0] = S4;
+        A4[1][1] = C4 * L4;
+        A4[1][2] = - C4 * M4;
+        A4[1][3] = AA4 * S4;
+        A4[2][1] = M4;
+        A4[2][2] = L4;
+        A4[2][3] = D_d4;
+        A4[3][3] = 1.0;
+    
+        A5[0][0] = C5;
+        A5[0][1] = -S5 * L5;
+        A5[0][2] = S5 * M5;
+        A5[0][3] = AA5 * C5;
+        A5[1][0] = S5;
+        A5[1][1] = C5 * L5;
+        A5[1][2] = - C5 * M5;
+        A5[1][3] = AA5 * S5;
+        A5[2][1] = M5;
+        A5[2][2] = L5;
+        A5[2][3] = D_d5;
+        A5[3][3] = 1.0;
+    
+        A6[0][0] = C6;
+        A6[0][1] = -S6 * L6;
+        A6[0][2] = S6 * M6;
+        A6[0][3] = AA6 * C6;
+        A6[1][0] = S6;
+        A6[1][1] = C6 * L6;
+        A6[1][2] = - C6 * M6;
+        A6[1][3] = AA6 * S6;
+        A6[2][1] = M6;
+        A6[2][2] = L6;
+        A6[2][3] = D_d6;
+        A6[3][3] = 1.0;
+    
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            sum = 0.0;
+            for (k = 0; k < 4; k++)
+                sum = sum + A1[i][k] * A2[k][j];
+            temp[i][j] = sum;
+        }
+    
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            sum = 0.0;
+            for (k = 0; k < 4; k++)
+                sum = sum + temp[i][k] * A3[k][j];
+            temp1[i][j] = sum;
+        }
+    
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            sum = 0.0;
+            for (k = 0; k < 4; k++)
+                sum = sum + temp1[i][k] * A4[k][j];
+            temp[i][j] = sum;
+        }
+    
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            sum = 0.0;
+            for (k = 0; k < 4; k++)
+                sum = sum + temp[i][k] * A5[k][j];
+            temp1[i][j] = sum;
+        }
+    
+        for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+        {
+            sum = 0.0;
+            for (k = 0; k < 4; k++)
+                sum = sum + temp1[i][k] * A6[k][j];
+            LHS[i][j] = sum;
+        }
+#ifndef IK_OPT
+/*
+        printf(" \n\n");
+        printf( "%15.10f,  %15.10f,    %15.10f,   %15.10f \n",LHS[0][0]-lx,LHS[0][1] - mx, LHS[0][2] - nx, LHS[0][3] - qx);
+    
+        printf( "%15.10f,  %15.10f,    %15.10f,   %15.10f \n",LHS[1][0]-ly,LHS[1][1] - my, LHS[1][2] - ny, LHS[1][3] - qy);
+    
+        printf( "%15.10f,  %15.10f,    %15.10f,   %15.10f \n",LHS[2][0]-lz,LHS[2][1] - mz, LHS[2][2] - nz, LHS[2][3] - qz);
+*/
+#endif
+
+}
+
+
+
+
+main()
+
+{
+    int tt1,tt2,tt3,tt4,tt5,i,j;
+    extern double sqrt();
+    float factor = .07;
+    double t;
+    double term1, term2, term3, root2;
+    double th1,th2,th3,th4,th5,th6;
+    int min;
+    int degen,tag;
+    double norm,minnorm;
+    coordinate sigma[MAXG][MAXG];
+    FILE *fp6;
+
+    Read_Example();
+    t = 0.0;
+
+
+    tt1 = clock();
+    initialize_variables();
+    Initialize_Convert();
+
+    compute_LHMAT();
+    compute_FMAT();
+
+    tt2 = clock();
+
+    tag =2;   /*default is 32*32 eigenvalue solving */ 
+     
+#ifndef IK_OPT
+     degen = check_degen(sigma,&tag); 
+#endif
+
+#ifdef IK_OPT32
+     tag = 2;
+#endif
+
+    tt3 = clock();
+    if (tag==0) reduce_Eigen();
+    if (tag ==1) set_up_degen(sigma,degen);
+    if (tag ==2) set_up_degen_32(sigma,degen);
+
+    tt4 = clock();
+    Compute_all_Solutions();
+
+
+    remove("gauss_result");
+    fp6 = fopen("z_output.dat","w");
+	
+	    if (num_sols == 0){
+          fprintf(fp6," %s \n","outside");
+		// Program exits if the file pointer returns NULL.
+		  fclose(fp6);
+          exit(1);
+	} 
+	
+	
+    printf("\n\n ********SOLUTIONS FOR THE INVERSE KINEMATICS PROBLEM IN output.dat********\n");
+    for (i = 0; i < num_sols; i++)
+    {
+        Solution[0][i] *= 180.0/Pi;
+        Solution[1][i] *= 180.0/Pi;
+        Solution[2][i] *= 180.0/Pi;
+        Solution[3][i] *= 180.0/Pi;
+        Solution[4][i] *= 180.0/Pi;
+        Solution[5][i] *= 180.0/Pi;
+        printf(" %f  & %f  & %f  & %f  & %f  & %f  \\\\ \n", Solution[0][i], Solution[1][i], Solution[2][i], Solution[3][i], Solution[4][i],Solution[5][i]); 
+		fprintf(fp6," %f  & %f  & %f  & %f  & %f  & %f  \n", Solution[0][i], Solution[1][i], Solution[2][i], Solution[3][i], Solution[4][i],Solution[5][i]); 
+
+	}
+    fclose(fp6);
+    printf(" *********************************************************************\n\n");
+
+    tt5 = clock();
+
+    printf(" TIME in calculating the generalized inverse kinematics (16 solutions). \n");
+    printf(" start time  = %d\n", tt1);
+	printf(" initialize time  = %d\n", tt2-tt1);
+	printf(" check_degen time  = %d\n", tt3-tt2);
+	    printf(" set_up_degen time  = %d\n", tt4-tt3);
+	    printf(" compute_all_sol time  = %d\n", tt5-tt4);
+
+/*
+    Verify_Results();
+*/
+
+}
+      
